@@ -14,7 +14,263 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      candidates: {
+        Row: {
+          created_at: string
+          email: string
+          email_normalized: string
+          id: string
+          job_id: string
+          name: string
+          name_normalized: string
+          phone: string
+          phone_normalized: string
+          referrer_id: string
+          resume_file_path: string
+          resume_raw_text: string
+          status: Database["public"]["Enums"]["candidate_status"]
+          status_updated_at: string
+          submitted_at: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          email_normalized: string
+          id?: string
+          job_id: string
+          name: string
+          name_normalized: string
+          phone: string
+          phone_normalized: string
+          referrer_id: string
+          resume_file_path?: string
+          resume_raw_text?: string
+          status?: Database["public"]["Enums"]["candidate_status"]
+          status_updated_at?: string
+          submitted_at?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          email_normalized?: string
+          id?: string
+          job_id?: string
+          name?: string
+          name_normalized?: string
+          phone?: string
+          phone_normalized?: string
+          referrer_id?: string
+          resume_file_path?: string
+          resume_raw_text?: string
+          status?: Database["public"]["Enums"]["candidate_status"]
+          status_updated_at?: string
+          submitted_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "candidates_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "candidates_referrer_id_fkey"
+            columns: ["referrer_id"]
+            isOneToOne: false
+            referencedRelation: "referrers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      duplicate_attempts: {
+        Row: {
+          candidate_email: string
+          candidate_name: string
+          candidate_phone: string
+          created_at: string
+          id: string
+          job_id: string
+          matched_candidate_id: string | null
+          referrer_email: string
+          referrer_name: string
+          referrer_phone: string
+        }
+        Insert: {
+          candidate_email: string
+          candidate_name: string
+          candidate_phone: string
+          created_at?: string
+          id?: string
+          job_id: string
+          matched_candidate_id?: string | null
+          referrer_email: string
+          referrer_name: string
+          referrer_phone: string
+        }
+        Update: {
+          candidate_email?: string
+          candidate_name?: string
+          candidate_phone?: string
+          created_at?: string
+          id?: string
+          job_id?: string
+          matched_candidate_id?: string | null
+          referrer_email?: string
+          referrer_name?: string
+          referrer_phone?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "duplicate_attempts_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "duplicate_attempts_matched_candidate_id_fkey"
+            columns: ["matched_candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      jobs: {
+        Row: {
+          created_at: string
+          description: string
+          id: string
+          recruiter_id: string
+          slug: string
+          status: Database["public"]["Enums"]["job_status"]
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string
+          id?: string
+          recruiter_id: string
+          slug: string
+          status?: Database["public"]["Enums"]["job_status"]
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          id?: string
+          recruiter_id?: string
+          slug?: string
+          status?: Database["public"]["Enums"]["job_status"]
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "jobs_recruiter_id_fkey"
+            columns: ["recruiter_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          email: string
+          full_name: string
+          id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          email?: string
+          full_name?: string
+          id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          full_name?: string
+          id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      referrers: {
+        Row: {
+          created_at: string
+          email: string
+          id: string
+          name: string
+          phone: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          id?: string
+          name: string
+          phone: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          id?: string
+          name?: string
+          phone?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      status_history: {
+        Row: {
+          candidate_id: string
+          changed_at: string
+          changed_by: string | null
+          id: string
+          status: Database["public"]["Enums"]["candidate_status"]
+        }
+        Insert: {
+          candidate_id: string
+          changed_at?: string
+          changed_by?: string | null
+          id?: string
+          status: Database["public"]["Enums"]["candidate_status"]
+        }
+        Update: {
+          candidate_id?: string
+          changed_at?: string
+          changed_by?: string | null
+          id?: string
+          status?: Database["public"]["Enums"]["candidate_status"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "status_history_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "status_history_changed_by_fkey"
+            columns: ["changed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -23,7 +279,14 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      candidate_status:
+        | "submitted"
+        | "in_review"
+        | "interview"
+        | "offer"
+        | "hired"
+        | "rejected"
+      job_status: "open" | "closed" | "on_hold"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +413,16 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      candidate_status: [
+        "submitted",
+        "in_review",
+        "interview",
+        "offer",
+        "hired",
+        "rejected",
+      ],
+      job_status: ["open", "closed", "on_hold"],
+    },
   },
 } as const
