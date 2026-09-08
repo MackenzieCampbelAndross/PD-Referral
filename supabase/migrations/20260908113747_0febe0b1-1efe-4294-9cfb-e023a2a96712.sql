@@ -1,0 +1,5 @@
+GRANT SELECT, INSERT, UPDATE, DELETE ON storage.objects TO authenticated;
+GRANT INSERT ON storage.objects TO anon;
+CREATE POLICY "Public can upload referral resumes" ON storage.objects FOR INSERT TO anon, authenticated WITH CHECK (bucket_id = 'resumes');
+CREATE POLICY "Recruiters can view resumes for their candidates" ON storage.objects FOR SELECT TO authenticated USING (bucket_id = 'resumes' AND EXISTS (SELECT 1 FROM public.candidates c JOIN public.jobs j ON j.id = c.job_id WHERE c.resume_file_path = name AND j.recruiter_id = auth.uid()));
+CREATE POLICY "Recruiters can delete resumes for their candidates" ON storage.objects FOR DELETE TO authenticated USING (bucket_id = 'resumes' AND EXISTS (SELECT 1 FROM public.candidates c JOIN public.jobs j ON j.id = c.job_id WHERE c.resume_file_path = name AND j.recruiter_id = auth.uid()));
