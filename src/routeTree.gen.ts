@@ -10,33 +10,53 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as JSlugRouteImport } from './routes/j/$slug'
+import { Route as ApiPublicReferralsRouteImport } from './routes/api/public/referrals'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const JSlugRoute = JSlugRouteImport.update({
+  id: '/j/$slug',
+  path: '/j/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicReferralsRoute = ApiPublicReferralsRouteImport.update({
+  id: '/api/public/referrals',
+  path: '/api/public/referrals',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/j/$slug': typeof JSlugRoute
+  '/api/public/referrals': typeof ApiPublicReferralsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/j/$slug': typeof JSlugRoute
+  '/api/public/referrals': typeof ApiPublicReferralsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/j/$slug': typeof JSlugRoute
+  '/api/public/referrals': typeof ApiPublicReferralsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/' | '/j/$slug' | '/api/public/referrals'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/' | '/j/$slug' | '/api/public/referrals'
+  id: '__root__' | '/' | '/j/$slug' | '/api/public/referrals'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  JSlugRoute: typeof JSlugRoute
+  ApiPublicReferralsRoute: typeof ApiPublicReferralsRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +68,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/j/$slug': {
+      id: '/j/$slug'
+      path: '/j/$slug'
+      fullPath: '/j/$slug'
+      preLoaderRoute: typeof JSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/referrals': {
+      id: '/api/public/referrals'
+      path: '/api/public/referrals'
+      fullPath: '/api/public/referrals'
+      preLoaderRoute: typeof ApiPublicReferralsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  JSlugRoute: JSlugRoute,
+  ApiPublicReferralsRoute: ApiPublicReferralsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
