@@ -10,12 +10,18 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApiRecruiterRouteImport } from './routes/api/recruiter'
 import { Route as JSlugRouteImport } from './routes/j/$slug'
 import { Route as ApiPublicReferralsRouteImport } from './routes/api/public/referrals'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiRecruiterRoute = ApiRecruiterRouteImport.update({
+  id: '/api/recruiter',
+  path: '/api/recruiter',
   getParentRoute: () => rootRouteImport,
 } as any)
 const JSlugRoute = JSlugRouteImport.update({
@@ -31,30 +37,34 @@ const ApiPublicReferralsRoute = ApiPublicReferralsRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/api/recruiter': typeof ApiRecruiterRoute
   '/j/$slug': typeof JSlugRoute
   '/api/public/referrals': typeof ApiPublicReferralsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/api/recruiter': typeof ApiRecruiterRoute
   '/j/$slug': typeof JSlugRoute
   '/api/public/referrals': typeof ApiPublicReferralsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/api/recruiter': typeof ApiRecruiterRoute
   '/j/$slug': typeof JSlugRoute
   '/api/public/referrals': typeof ApiPublicReferralsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/j/$slug' | '/api/public/referrals'
+  fullPaths: '/' | '/api/recruiter' | '/j/$slug' | '/api/public/referrals'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/j/$slug' | '/api/public/referrals'
-  id: '__root__' | '/' | '/j/$slug' | '/api/public/referrals'
+  to: '/' | '/api/recruiter' | '/j/$slug' | '/api/public/referrals'
+  id: '__root__' | '/' | '/api/recruiter' | '/j/$slug' | '/api/public/referrals'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ApiRecruiterRoute: typeof ApiRecruiterRoute
   JSlugRoute: typeof JSlugRoute
   ApiPublicReferralsRoute: typeof ApiPublicReferralsRoute
 }
@@ -66,6 +76,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/recruiter': {
+      id: '/api/recruiter'
+      path: '/api/recruiter'
+      fullPath: '/api/recruiter'
+      preLoaderRoute: typeof ApiRecruiterRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/j/$slug': {
@@ -87,6 +104,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ApiRecruiterRoute: ApiRecruiterRoute,
   JSlugRoute: JSlugRoute,
   ApiPublicReferralsRoute: ApiPublicReferralsRoute,
 }

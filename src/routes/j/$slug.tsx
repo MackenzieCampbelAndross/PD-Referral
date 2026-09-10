@@ -10,9 +10,9 @@ import { supabase } from "@/integrations/supabase/client";
 export const Route = createFileRoute("/j/$slug")({
   head: () => ({
     meta: [
-      { title: "Submit a referral — PurpleDrive Referal" },
+      { title: "Submit a referral — Purple Drive Referral" },
       { name: "description", content: "Refer someone exceptional for an open role." },
-      { property: "og:title", content: "Submit a referral — PurpleDrive Referal" },
+      { property: "og:title", content: "Submit a referral — Purple Drive Referral" },
       { property: "og:description", content: "Refer someone exceptional for an open role." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -77,13 +77,13 @@ function ReferralPage() {
   return (
     <main className="min-h-screen bg-background">
       <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
-        <a href="/" className="flex items-center gap-3" aria-label="PurpleDrive Referal home">
+        <a href="/" className="flex items-center gap-3" aria-label="Purple Drive Referral home">
           <img
             src="/Purple%20drive%20logo.png"
-            alt="PurpleDrive Referal"
+            alt="Purple Drive Referral"
             className="h-9 w-auto max-w-[140px] object-contain"
           />
-          <span className="font-display text-xl font-semibold tracking-tight">PurpleDrive Referal</span>
+          <span className="font-display text-xl font-semibold tracking-tight">Purple Drive Referral</span>
         </a>
         <a href="/" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
           <ArrowLeft className="size-4" /> Back home
@@ -106,7 +106,7 @@ function ReferralPage() {
           </p>
           <Button asChild className="mt-7">
             <a href="/">
-              Explore PurpleDrive Referal <ArrowRight />
+              Explore Purple Drive Referral <ArrowRight />
             </a>
           </Button>
         </div>
@@ -219,10 +219,10 @@ function SuccessState({ candidateFile }: { candidateFile: string }) {
       </p>
       <div className="mt-8 rounded-2xl border border-border bg-card p-5 text-left text-sm leading-6 text-muted-foreground">
         <span className="font-semibold text-foreground">Want to check progress later?</span> Use the email and phone
-        number you submitted on the PurpleDrive Referal home page.
+        number you submitted on the Purple Drive Referral home page.
       </div>
       <Button asChild variant="outline" className="mt-8">
-        <a href="/">Back to PurpleDrive Referal</a>
+        <a href="/">Back to Purple Drive Referral</a>
       </Button>
     </div>
   );

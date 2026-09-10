@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { lovable } from "@/integrations/lovable";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 
@@ -23,12 +22,19 @@ export const statusLabels: Record<CandidateStatus, string> = {
   rejected: "Rejected",
 };
 
+export const AUTH_ERROR_MESSAGE = "Only @purpledrive.com accounts can access Purple Drive Referral.";
+
+export function isPurpleDriveEmail(email?: string | null): boolean {
+  if (!email) return false;
+  return email.trim().toLowerCase().endsWith("@purpledrive.com");
+}
+
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "PurpleDrive Referal — Turn introductions into hires" },
+      { title: "Purple Drive Referral — Turn introductions into hires" },
       { name: "description", content: "A private referral workspace for sharing roles, collecting resumes, and moving great candidates forward." },
-      { property: "og:title", content: "PurpleDrive Referal — Turn introductions into hires" },
+      { property: "og:title", content: "Purple Drive Referral — Turn introductions into hires" },
       { property: "og:description", content: "Share a role once. Let your network do the sourcing." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -48,35 +54,87 @@ function Index() {
   const [trackOpen, setTrackOpen] = useState(false);
 
   const refreshWorkspace = async (currentUserId: string) => {
-    const [{ data: jobRows, error: jobError }, { data: candidateRows, error: candidateError }] = await Promise.all([
-      supabase.from("jobs").select("*").eq("recruiter_id", currentUserId).order("created_at", { ascending: false }),
-      supabase.from("candidates").select("*").order("submitted_at", { ascending: false }),
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (token) {
+        const response = await fetch("/api/recruiter", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (response.ok) {
+          const resJson = (await response.json()) as { jobs?: Job[]; candidates?: Candidate[] };
+          if (Array.isArray(resJson.jobs) && Array.isArray(resJson.candidates)) {
+            setJobs(resJson.jobs);
+            setCandidates(resJson.candidates);
+            return;
+          }
+        }
+      }
+    } catch {
+      // Fall through to scoped query
+    }
+
+    const [
+      { data: jobRows, error: jobError },
+      { data: candidateRows, error: candidateError },
+    ] = await Promise.all([
+      supabase
+        .from("jobs")
+        .select("id, recruiter_id, title, description, slug, status, created_at, updated_at")
+        .eq("recruiter_id", currentUserId)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("candidates")
+        .select("id, job_id, referrer_id, name, email, phone, status, submitted_at, skills")
+        .order("submitted_at", { ascending: false }),
     ]);
+
     if (jobError || candidateError) {
       toast.error("We couldn't load your workspace.");
       return;
     }
-    setJobs(jobRows ?? []);
-    setCandidates(candidateRows ?? []);
+    setJobs((jobRows as Job[]) ?? []);
+    setCandidates((candidateRows as Candidate[]) ?? []);
   };
 
   useEffect(() => {
     let mounted = true;
+
+    const checkUser = async (u: { id: string; email?: string | null } | null) => {
+      if (!u) {
+        if (mounted) {
+          setUser(null);
+          setJobs([]);
+          setCandidates([]);
+        }
+        return;
+      }
+      if (!isPurpleDriveEmail(u.email)) {
+        await supabase.auth.signOut();
+        if (mounted) {
+          setUser(null);
+          setJobs([]);
+          setCandidates([]);
+        }
+        toast.error(AUTH_ERROR_MESSAGE);
+        return;
+      }
+      if (mounted) {
+        setUser({ id: u.id, email: u.email ?? "" });
+        void refreshWorkspace(u.id);
+      }
+    };
+
     void supabase.auth.getUser().then(({ data }) => {
       if (mounted && data.user) {
-        setUser({ id: data.user.id, email: data.user.email ?? "" });
-        void refreshWorkspace(data.user.id);
+        void checkUser(data.user);
       }
     });
+
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      const nextUser = session?.user;
-      setUser(nextUser ? { id: nextUser.id, email: nextUser.email ?? "" } : null);
-      if (nextUser) void refreshWorkspace(nextUser.id);
-      else {
-        setJobs([]);
-        setCandidates([]);
-      }
+      void checkUser(session?.user ?? null);
     });
+
     return () => {
       mounted = false;
       listener.subscription.unsubscribe();
@@ -98,13 +156,13 @@ function Index() {
   return (
     <main className="min-h-screen bg-background">
       <header className="mx-auto flex max-w-7xl items-center justify-between px-6 py-6 lg:px-10">
-        <a href="/" className="flex items-center gap-3" aria-label="PurpleDrive Referal home">
+        <a href="/" className="flex items-center gap-3" aria-label="Purple Drive Referral home">
           <img
             src="/Purple%20drive%20logo.png"
-            alt="PurpleDrive Referal"
+            alt="Purple Drive Referral"
             className="h-9 w-auto max-w-[140px] object-contain"
           />
-          <span className="font-display text-xl font-semibold tracking-tight">PurpleDrive Referal</span>
+          <span className="font-display text-xl font-semibold tracking-tight">Purple Drive Referral</span>
         </a>
         <nav className="flex items-center gap-2">
           <a href="#track" className="hidden px-4 py-2 text-sm text-muted-foreground transition-colors hover:text-foreground sm:inline-flex">Track a referral</a>
@@ -122,7 +180,7 @@ function Index() {
             <div className="max-w-2xl">
               <div className="eyebrow"><span className="eyebrow-dot" /> Referral hiring, without the spreadsheet</div>
               <h1 className="mt-7 font-display text-5xl font-semibold leading-[.98] tracking-tight text-foreground sm:text-7xl">Turn introductions into <em className="text-primary">hires.</em></h1>
-              <p className="mt-7 max-w-xl text-lg leading-8 text-muted-foreground">Share a role once. Let your network do the sourcing. PurpleDrive Referal keeps every resume private, catches duplicates automatically, and gives your team a clear path from referral to offer.</p>
+              <p className="mt-7 max-w-xl text-lg leading-8 text-muted-foreground">Share a role once. Let your network do the sourcing. Purple Drive Referral keeps every resume private, catches duplicates automatically, and gives your team a clear path from referral to offer.</p>
               <div className="mt-9 flex flex-wrap gap-3">
                 <Button size="lg" onClick={() => { setAuthMode("signup"); setShowAuth(true); }}>Start recruiting <ArrowRight /></Button>
                 <Button size="lg" variant="outline" onClick={() => setTrackOpen(true)}><Search /> Track a referral</Button>
@@ -162,11 +220,38 @@ function Feature({ icon, title, copy }: { icon: React.ReactNode; title: string; 
 
 function Dashboard({ userEmail, jobs, candidates, selectedJob, setSelectedJob, stats, onCreate, onRefresh }: { userEmail: string; jobs: Job[]; candidates: Candidate[]; selectedJob: string; setSelectedJob: (value: string) => void; stats: { roles: number; referrals: number; shortlisted: number }; onCreate: () => void; onRefresh: () => void }) {
   const jobTitle = (jobId: string) => jobs.find((job) => job.id === jobId)?.title ?? "Unknown role";
+
   const updateStatus = async (candidateId: string, status: CandidateStatus) => {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+
+    if (token) {
+      try {
+        const res = await fetch("/api/recruiter", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ action: "update_status", candidate_id: candidateId, status }),
+        });
+        if (res.ok) {
+          toast.success("Status updated");
+          onRefresh();
+          return;
+        }
+      } catch {
+        // Fall back to direct supabase update
+      }
+    }
+
     const { data: authData } = await supabase.auth.getUser();
     if (!authData.user) return;
     const { error } = await supabase.from("candidates").update({ status }).eq("id", candidateId);
-    if (error) { toast.error("Could not update status"); return; }
+    if (error) {
+      toast.error("Could not update status");
+      return;
+    }
     try {
       await supabase.from("status_history").insert({ candidate_id: candidateId, status, changed_by: authData.user.id });
     } catch (err) {
@@ -175,16 +260,313 @@ function Dashboard({ userEmail, jobs, candidates, selectedJob, setSelectedJob, s
     toast.success("Status updated");
     onRefresh();
   };
-  const copyLink = async (slug: string) => { await navigator.clipboard.writeText(`${window.location.origin}/j/${slug}`); toast.success("Referral link copied"); };
-  return <section className="mx-auto max-w-7xl px-6 pb-24 pt-10 lg:px-10"><div className="mb-10 flex flex-col justify-between gap-5 border-b border-border pb-8 sm:flex-row sm:items-end"><div><div className="eyebrow"><span className="eyebrow-dot" /> Recruiter workspace</div><h1 className="mt-4 font-display text-4xl font-semibold tracking-tight sm:text-5xl">Good to see you.</h1><p className="mt-2 text-muted-foreground">{userEmail} · Here’s what’s moving.</p></div><Button onClick={onCreate}><Plus /> Create a role</Button></div><div className="grid gap-4 sm:grid-cols-3"><StatCard label="Open roles" value={stats.roles} detail="Shareable links live" icon={<BriefcaseBusiness />} /><StatCard label="Total referrals" value={stats.referrals} detail="Across every role" icon={<Users />} /><StatCard label="Shortlisted" value={stats.shortlisted} detail="Candidates shortlisted" icon={<Sparkles />} /></div><div className="mt-12 grid gap-10 lg:grid-cols-[.8fr_1.5fr]"><div><div className="mb-4 flex items-center justify-between"><h2 className="font-display text-2xl font-semibold">Your roles</h2><span className="text-sm text-muted-foreground">{jobs.length} total</span></div><div className="space-y-3">{jobs.length === 0 ? <EmptyState onCreate={onCreate} /> : jobs.map((job) => <div key={job.id} className={`job-row ${selectedJob === job.id ? "job-row-active" : ""}`}><button className="min-w-0 flex-1 text-left" onClick={() => setSelectedJob(selectedJob === job.id ? "all" : job.id)}><div className="flex items-center gap-2"><span className={`job-dot job-dot-${job.status}`} /><span className="truncate font-medium">{job.title}</span></div><p className="mt-1 text-xs text-muted-foreground">{candidates.filter((candidate) => candidate.job_id === job.id).length} referrals · {job.status === "open" ? "Accepting referrals" : job.status.replace("_", " ")}</p></button><Button size="icon" variant="ghost" aria-label={`Copy referral link for ${job.title}`} onClick={() => void copyLink(job.slug)}><Copy /></Button></div>)}</div></div><div><div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="font-display text-2xl font-semibold">Referral pipeline</h2><p className="mt-1 text-sm text-muted-foreground">{selectedJob === "all" ? "Every role" : jobTitle(selectedJob)}</p></div>{selectedJob !== "all" && <Button size="sm" variant="outline" onClick={() => setSelectedJob("all")}><X /> Clear filter</Button>}</div><div className="overflow-hidden rounded-2xl border border-border bg-card">{candidates.length === 0 ? <div className="p-10 text-center"><Users className="mx-auto size-8 text-muted-foreground" /><p className="mt-3 font-medium">No referrals here yet</p><p className="mt-1 text-sm text-muted-foreground">Share a role link to start the conversation.</p></div> : <div className="divide-y divide-border">{candidates.map((candidate) => <div key={candidate.id} className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center"><span className="avatar avatar-blue">{candidate.name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</span><div className="min-w-0 flex-1"><p className="font-medium">{candidate.name}</p><p className="mt-1 text-sm text-muted-foreground">{jobTitle(candidate.job_id)} · {new Date(candidate.submitted_at).toLocaleDateString()}</p>{Array.isArray(candidate.skills) && candidate.skills.length > 0 && <div className="mt-2 flex flex-wrap gap-1">{(candidate.skills as string[]).slice(0, 6).map((skill: string) => <span key={skill} className="rounded-md bg-secondary px-2 py-0.5 text-[11px] font-medium text-foreground">{skill}</span>)}{(candidate.skills as string[]).length > 6 && <span className="rounded-md bg-secondary/60 px-1.5 py-0.5 text-[10px] text-muted-foreground">+{(candidate.skills as string[]).length - 6} more</span>}</div>}</div><Select value={candidate.status} onValueChange={(value) => void updateStatus(candidate.id, value as CandidateStatus)}><SelectTrigger className="w-full sm:w-40"><SelectValue /></SelectTrigger><SelectContent>{Object.entries(statusLabels).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></div>)}</div>}</div></div></div></section>;
-}
-function StatCard({ label, value, detail, icon }: { label: string; value: number; detail: string; icon: React.ReactNode }) { return <div className="stat-card"><span className="flex size-10 items-center justify-center rounded-xl bg-secondary text-primary">{icon}</span><p className="mt-5 text-sm text-muted-foreground">{label}</p><p className="mt-1 font-display text-4xl font-semibold">{value}</p><p className="mt-1 text-xs text-muted-foreground">{detail}</p></div>; }
-function EmptyState({ onCreate }: { onCreate: () => void }) { return <div className="rounded-2xl border border-dashed border-border p-7 text-center"><BriefcaseBusiness className="mx-auto size-8 text-muted-foreground" /><p className="mt-3 font-medium">Your first role starts here</p><p className="mt-1 text-sm leading-6 text-muted-foreground">Create a role, then share its private referral link.</p><Button className="mt-5" size="sm" onClick={onCreate}><Plus /> Create role</Button></div>; }
 
-function DialogShell({ children, onClose }: { children: React.ReactNode; onClose: () => void }) { return <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><div className="dialog-panel">{children}</div></div>; }
-function DialogHeader({ eyebrow, title, copy, onClose }: { eyebrow: string; title: string; copy: string; onClose: () => void }) { return <div className="flex items-start justify-between gap-5"><div><div className="eyebrow">{eyebrow}</div><h2 className="mt-3 font-display text-3xl font-semibold tracking-tight">{title}</h2><p className="mt-2 text-sm leading-6 text-muted-foreground">{copy}</p></div><Button variant="ghost" size="icon" aria-label="Close" onClick={onClose}><X /></Button></div>; }
-function AuthDialog({ mode, setMode, onClose }: { mode: "signin" | "signup"; setMode: (mode: "signin" | "signup") => void; onClose: () => void }) { const [email, setEmail] = useState(""); const [password, setPassword] = useState(""); const [name, setName] = useState(""); const [busy, setBusy] = useState(false); const submit = async (event: React.FormEvent) => { event.preventDefault(); setBusy(true); const result = mode === "signin" ? await supabase.auth.signInWithPassword({ email, password }) : await supabase.auth.signUp({ email, password, options: { data: { full_name: name } } }); setBusy(false); if (result.error) { toast.error(result.error.message); return; } if (mode === "signup") { toast.success("Account created. Check your email to confirm access."); setMode("signin"); } else { toast.success("Welcome to your workspace"); onClose(); } }; const google = async () => { setBusy(true); const result = await lovable.auth.signInWithOAuth("google", { redirect_uri: window.location.origin }); if (result.error) toast.error(result.error.message); setBusy(false); }; return <DialogShell onClose={onClose}><DialogHeader eyebrow="Recruiter access" title={mode === "signin" ? "Welcome back." : "Build your referral engine."} copy={mode === "signin" ? "Sign in to manage roles and review your pipeline." : "Create a private workspace for the people you trust."} onClose={onClose} /><form onSubmit={(event) => void submit(event)} className="mt-8 space-y-4">{mode === "signup" && <Field label="Your name"><Input value={name} onChange={(event) => setName(event.target.value)} placeholder="Alex Morgan" required /></Field>}<Field label="Work email"><Input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@company.com" required /></Field><Field label="Password"><Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 6 characters" minLength={6} required /></Field><Button className="w-full" size="lg" disabled={busy}>{busy ? "Please wait…" : mode === "signin" ? "Sign in" : "Create workspace"}<ArrowRight /></Button></form><div className="my-5 flex items-center gap-3 text-xs text-muted-foreground"><span className="h-px flex-1 bg-border" /> or <span className="h-px flex-1 bg-border" /></div><Button variant="outline" className="w-full" onClick={() => void google()} disabled={busy}>Continue with Google</Button><button type="button" className="mt-6 block w-full text-center text-sm text-muted-foreground hover:text-foreground" onClick={() => setMode(mode === "signin" ? "signup" : "signin")}>{mode === "signin" ? "Need a recruiter account? Create one" : "Already have an account? Sign in"}</button></DialogShell>; }
-function CreateJobDialog({ recruiterId, onClose, onCreated }: { recruiterId: string; onClose: () => void; onCreated: () => void }) { const [title, setTitle] = useState(""); const [description, setDescription] = useState(""); const [busy, setBusy] = useState(false); const submit = async (event: React.FormEvent) => { event.preventDefault(); setBusy(true); const base = title.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, ""); const slug = `${base || "role"}-${Math.random().toString(36).slice(2, 7)}`; const { error } = await supabase.from("jobs").insert({ recruiter_id: recruiterId, title: title.trim(), description: description.trim(), slug }); setBusy(false); if (error) { toast.error(error.message); return; } toast.success("Role created. Your link is ready to share."); onCreated(); }; return <DialogShell onClose={onClose}><DialogHeader eyebrow="New role" title="Give your network a reason to reach out." copy="Add the essentials. You can share the referral link as soon as you save." onClose={onClose} /><form onSubmit={(event) => void submit(event)} className="mt-8 space-y-5"><Field label="Role title"><Input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Senior Product Designer" required /></Field><Field label="What should referrers know?" hint="Optional"><Textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="A quick snapshot of the role, team, or ideal background." rows={5} /></Field><Button className="w-full" size="lg" disabled={busy}>{busy ? "Creating…" : "Create role"}<Plus /></Button></form></DialogShell>; }
+  const copyLink = async (slug: string) => {
+    await navigator.clipboard.writeText(`${window.location.origin}/j/${slug}`);
+    toast.success("Referral link copied");
+  };
+
+  return (
+    <section className="mx-auto max-w-7xl px-6 pb-24 pt-10 lg:px-10">
+      <div className="mb-10 flex flex-col justify-between gap-5 border-b border-border pb-8 sm:flex-row sm:items-end">
+        <div>
+          <div className="eyebrow"><span className="eyebrow-dot" /> Recruiter workspace</div>
+          <h1 className="mt-4 font-display text-4xl font-semibold tracking-tight sm:text-5xl">Good to see you.</h1>
+          <p className="mt-2 text-muted-foreground">{userEmail} · Here’s what’s moving.</p>
+        </div>
+        <Button onClick={onCreate}><Plus /> Create a role</Button>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <StatCard label="Open roles" value={stats.roles} detail="Shareable links live" icon={<BriefcaseBusiness />} />
+        <StatCard label="Total referrals" value={stats.referrals} detail="Across every role" icon={<Users />} />
+        <StatCard label="Shortlisted" value={stats.shortlisted} detail="Candidates shortlisted" icon={<Sparkles />} />
+      </div>
+      <div className="mt-12 grid gap-10 lg:grid-cols-[.8fr_1.5fr]">
+        <div>
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="font-display text-2xl font-semibold">Your roles</h2>
+            <span className="text-sm text-muted-foreground">{jobs.length} total</span>
+          </div>
+          <div className="space-y-3">
+            {jobs.length === 0 ? (
+              <EmptyState onCreate={onCreate} />
+            ) : (
+              jobs.map((job) => (
+                <div key={job.id} className={`job-row ${selectedJob === job.id ? "job-row-active" : ""}`}>
+                  <button className="min-w-0 flex-1 text-left" onClick={() => setSelectedJob(selectedJob === job.id ? "all" : job.id)}>
+                    <div className="flex items-center gap-2">
+                      <span className={`job-dot job-dot-${job.status}`} />
+                      <span className="truncate font-medium">{job.title}</span>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">{candidates.filter((candidate) => candidate.job_id === job.id).length} referrals · {job.status === "open" ? "Accepting referrals" : job.status.replace("_", " ")}</p>
+                  </button>
+                  <Button size="icon" variant="ghost" aria-label={`Copy referral link for ${job.title}`} onClick={() => void copyLink(job.slug)}>
+                    <Copy />
+                  </Button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+        <div>
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="font-display text-2xl font-semibold">Referral pipeline</h2>
+              <p className="mt-1 text-sm text-muted-foreground">{selectedJob === "all" ? "Every role" : jobTitle(selectedJob)}</p>
+            </div>
+            {selectedJob !== "all" && (
+              <Button size="sm" variant="outline" onClick={() => setSelectedJob("all")}><X /> Clear filter</Button>
+            )}
+          </div>
+          <div className="overflow-hidden rounded-2xl border border-border bg-card">
+            {candidates.length === 0 ? (
+              <div className="p-10 text-center">
+                <Users className="mx-auto size-8 text-muted-foreground" />
+                <p className="mt-3 font-medium">No referrals here yet</p>
+                <p className="mt-1 text-sm text-muted-foreground">Share a role link to start the conversation.</p>
+              </div>
+            ) : (
+              <div className="divide-y border-t border-border">
+                {candidates.map((candidate) => (
+                  <div key={candidate.id} className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center">
+                    <span className="avatar avatar-blue">{candidate.name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</span>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium">{candidate.name}</p>
+                      <p className="mt-1 text-sm text-muted-foreground">{jobTitle(candidate.job_id)} · {new Date(candidate.submitted_at).toLocaleDateString()}</p>
+                      {Array.isArray(candidate.skills) && candidate.skills.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {(candidate.skills as string[]).slice(0, 6).map((skill: string) => (
+                            <span key={skill} className="rounded-md bg-secondary px-2 py-0.5 text-[11px] font-medium text-foreground">{skill}</span>
+                          ))}
+                          {(candidate.skills as string[]).length > 6 && (
+                            <span className="rounded-md bg-secondary/60 px-1.5 py-0.5 text-[10px] text-muted-foreground">+{(candidate.skills as string[]).length - 6} more</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <Select value={candidate.status} onValueChange={(value) => void updateStatus(candidate.id, value as CandidateStatus)}>
+                      <SelectTrigger className="w-full sm:w-40"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(statusLabels).map(([value, label]) => (
+                          <SelectItem key={value} value={value}>{label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function StatCard({ label, value, detail, icon }: { label: string; value: number; detail: string; icon: React.ReactNode }) {
+  return (
+    <div className="stat-card">
+      <span className="flex size-10 items-center justify-center rounded-xl bg-secondary text-primary">{icon}</span>
+      <p className="mt-5 text-sm text-muted-foreground">{label}</p>
+      <p className="mt-1 font-display text-4xl font-semibold">{value}</p>
+      <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
+    </div>
+  );
+}
+
+function EmptyState({ onCreate }: { onCreate: () => void }) {
+  return (
+    <div className="rounded-2xl border border-dashed border-border p-7 text-center">
+      <BriefcaseBusiness className="mx-auto size-8 text-muted-foreground" />
+      <p className="mt-3 font-medium">Your first role starts here</p>
+      <p className="mt-1 text-sm leading-6 text-muted-foreground">Create a role, then share its private referral link.</p>
+      <Button className="mt-5" size="sm" onClick={onCreate}><Plus /> Create role</Button>
+    </div>
+  );
+}
+
+function DialogShell({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
+  return (
+    <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <div className="dialog-panel">{children}</div>
+    </div>
+  );
+}
+
+function DialogHeader({ eyebrow, title, copy, onClose }: { eyebrow: string; title: string; copy: string; onClose: () => void }) {
+  return (
+    <div className="flex items-start justify-between gap-5">
+      <div>
+        <div className="eyebrow">{eyebrow}</div>
+        <h2 className="mt-3 font-display text-3xl font-semibold tracking-tight">{title}</h2>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">{copy}</p>
+      </div>
+      <Button variant="ghost" size="icon" aria-label="Close" onClick={onClose}><X /></Button>
+    </div>
+  );
+}
+
+function AuthDialog({ mode, setMode, onClose }: { mode: "signin" | "signup"; setMode: (mode: "signin" | "signup") => void; onClose: () => void }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+
+    // Strict client-side email domain validation
+    if (!isPurpleDriveEmail(email)) {
+      toast.error(AUTH_ERROR_MESSAGE);
+      return;
+    }
+
+    setBusy(true);
+    const result = mode === "signin"
+      ? await supabase.auth.signInWithPassword({ email: email.trim().toLowerCase(), password })
+      : await supabase.auth.signUp({
+          email: email.trim().toLowerCase(),
+          password,
+          options: { data: { full_name: name.trim() } },
+        });
+    setBusy(false);
+
+    if (result.error) {
+      toast.error(result.error.message);
+      return;
+    }
+
+    if (mode === "signup") {
+      toast.success("Account created. Check your email to confirm access.");
+      setMode("signin");
+    } else {
+      toast.success("Welcome to your workspace");
+      onClose();
+    }
+  };
+
+  return (
+    <DialogShell onClose={onClose}>
+      <DialogHeader
+        eyebrow="Recruiter access"
+        title={mode === "signin" ? "Welcome back." : "Build your referral engine."}
+        copy={mode === "signin" ? "Sign in to manage roles and review your pipeline." : "Create a private workspace for the people you trust."}
+        onClose={onClose}
+      />
+      <form onSubmit={(event) => void submit(event)} className="mt-8 space-y-4">
+        {mode === "signup" && (
+          <Field label="Your name">
+            <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="Alex Morgan" required />
+          </Field>
+        )}
+        <Field label="Work email">
+          <Input
+            type="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            placeholder="you@purpledrive.com"
+            required
+          />
+        </Field>
+        <Field label="Password">
+          <Input
+            type="password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            placeholder="At least 6 characters"
+            minLength={6}
+            required
+          />
+        </Field>
+        <Button className="w-full" size="lg" disabled={busy}>
+          {busy ? "Please wait…" : mode === "signin" ? "Sign in" : "Create workspace"}
+          <ArrowRight />
+        </Button>
+      </form>
+      <button
+        type="button"
+        className="mt-6 block w-full text-center text-sm text-muted-foreground hover:text-foreground"
+        onClick={() => setMode(mode === "signin" ? "signup" : "signin")}
+      >
+        {mode === "signin" ? "Need a recruiter account? Create one" : "Already have an account? Sign in"}
+      </button>
+    </DialogShell>
+  );
+}
+
+function CreateJobDialog({ recruiterId, onClose, onCreated }: { recruiterId: string; onClose: () => void; onCreated: () => void }) {
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+
+    if (token) {
+      try {
+        const res = await fetch("/api/recruiter", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ action: "create_job", title: title.trim(), description: description.trim() }),
+        });
+        if (res.ok) {
+          setBusy(false);
+          toast.success("Role created. Your link is ready to share.");
+          onCreated();
+          return;
+        }
+      } catch {
+        // Fall back to direct insert
+      }
+    }
+
+    const base = title.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+    const slug = `${base || "role"}-${Math.random().toString(36).slice(2, 7)}`;
+    const { error } = await supabase.from("jobs").insert({ recruiter_id: recruiterId, title: title.trim(), description: description.trim(), slug });
+    setBusy(false);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    toast.success("Role created. Your link is ready to share.");
+    onCreated();
+  };
+
+  return (
+    <DialogShell onClose={onClose}>
+      <DialogHeader
+        eyebrow="New role"
+        title="Give your network a reason to reach out."
+        copy="Add the essentials. You can share the referral link as soon as you save."
+        onClose={onClose}
+      />
+      <form onSubmit={(event) => void submit(event)} className="mt-8 space-y-5">
+        <Field label="Role title">
+          <Input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Senior Product Designer" required />
+        </Field>
+        <Field label="What should referrers know?" hint="Optional">
+          <Textarea
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            placeholder="A quick snapshot of the role, team, or ideal background."
+            rows={5}
+          />
+        </Field>
+        <Button className="w-full" size="lg" disabled={busy}>
+          {busy ? "Creating…" : "Create role"}
+          <Plus />
+        </Button>
+      </form>
+    </DialogShell>
+  );
+}
 function TrackDialog({ onClose }: { onClose: () => void }) {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");

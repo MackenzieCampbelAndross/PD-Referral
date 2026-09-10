@@ -24,6 +24,67 @@ export const normalizePhone = (value: string) =>
     .replace(/\D/g, "")
     .replace(/^00/, "");
 
+// In-memory rate limiter for public submission (abuse protection)
+const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
+
+export function checkRateLimit(ip: string, maxRequests = 10, windowMs = 10 * 60 * 1000): boolean {
+  const now = Date.now();
+  const record = rateLimitMap.get(ip);
+  if (!record || now > record.resetTime) {
+    rateLimitMap.set(ip, { count: 1, resetTime: now + windowMs });
+    return true;
+  }
+  if (record.count >= maxRequests) {
+    return false;
+  }
+  record.count += 1;
+  return true;
+}
+
+export async function validateFileContent(file: File): Promise<{ valid: boolean; error?: string }> {
+  // File size enforcement: 20 MB max
+  if (file.size === 0 || file.size > 20 * 1024 * 1024) {
+    return { valid: false, error: "Please attach a resume file under 20 MB." };
+  }
+
+  // File format validation: ONLY .pdf and .docx
+  const lowerName = file.name.toLowerCase();
+  if (lowerName.endsWith(".doc") && !lowerName.endsWith(".docx")) {
+    return { valid: false, error: ".doc files are not supported. Please upload a .pdf or .docx resume." };
+  }
+
+  if (!lowerName.endsWith(".pdf") && !lowerName.endsWith(".docx")) {
+    return { valid: false, error: "Unsupported file format. Please upload a .pdf or .docx resume." };
+  }
+
+  // Magic byte verification to prevent spoofed/malformed uploads
+  const fileBytes = new Uint8Array(await file.arrayBuffer());
+  if (lowerName.endsWith(".pdf")) {
+    // %PDF magic bytes (0x25, 0x50, 0x44, 0x46)
+    const isPdf =
+      fileBytes.length >= 4 &&
+      fileBytes[0] === 0x25 &&
+      fileBytes[1] === 0x50 &&
+      fileBytes[2] === 0x44 &&
+      fileBytes[3] === 0x46;
+    if (!isPdf) {
+      return { valid: false, error: "The uploaded PDF file has invalid magic bytes or is corrupted." };
+    }
+  } else if (lowerName.endsWith(".docx")) {
+    // Zip signature PK (0x50, 0x4B, 0x03, 0x04)
+    const isDocx =
+      fileBytes.length >= 4 &&
+      fileBytes[0] === 0x50 &&
+      fileBytes[1] === 0x4B &&
+      (fileBytes[2] === 0x03 || fileBytes[2] === 0x05);
+    if (!isDocx) {
+      return { valid: false, error: "The uploaded DOCX file has invalid magic bytes or is corrupted." };
+    }
+  }
+
+  return { valid: true };
+}
+
 const SKILL_CATALOG = [
   // Languages
   "JavaScript", "TypeScript", "Python", "Java", "C++", "C#", "Go", "Golang", "Rust", "Ruby",
@@ -139,7 +200,6 @@ export function extractIdentity(text: string): {
     for (const match of phoneMatches) {
       const digits = match.replace(/\D/g, "");
       if (digits.length >= 7 && digits.length <= 15) {
-        // Avoid pure year matches like 20182022
         if (!/^(19|20)\d{2}(19|20)\d{2}$/.test(digits)) {
           phone = match.trim();
           break;
@@ -177,7 +237,6 @@ export function extractIdentity(text: string): {
       if (COMMON_HEADER_WORDS.has(lower)) {
         continue;
       }
-      // Check if line matches a valid full name pattern (2 to 4 words)
       if (/^[A-Za-z][A-Za-z .'-]{1,50}$/.test(line)) {
         const words = line.split(/\s+/).filter(Boolean);
         if (words.length >= 2 && words.length <= 4) {
@@ -309,6 +368,8 @@ export const Route = createFileRoute("/api/public/referrals")({
 
         if (referrers && referrers.length > 0) {
           const referrerIds = referrers.map((r) => r.id);
+          // Data minimization: fetch only candidate_name, status, submitted_at, skills, job_title
+          // NEVER fetch resume_raw_text or storage paths
           const rows = await supabaseAdmin
             .from("candidates")
             .select("name, status, submitted_at, job_id, skills, jobs(title)")
@@ -346,6 +407,19 @@ export const Route = createFileRoute("/api/public/referrals")({
       },
 
       POST: async ({ request }) => {
+        // Rate limiting check per client IP
+        const clientIp =
+          request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+          request.headers.get("cf-connecting-ip") ||
+          "local";
+
+        if (!checkRateLimit(clientIp)) {
+          return Response.json(
+            { error: "Too many referral submissions. Please try again later." },
+            { status: 429 }
+          );
+        }
+
         const formData = await request.formData();
         const parsed = submitSchema.safeParse({
           job_slug: formData.get("job_slug"),
@@ -355,14 +429,18 @@ export const Route = createFileRoute("/api/public/referrals")({
         });
 
         const file = formData.get("resume");
-        if (
-          !parsed.success ||
-          !(file instanceof File) ||
-          file.size === 0 ||
-          file.size > 20 * 1024 * 1024
-        ) {
+        if (!parsed.success || !(file instanceof File)) {
           return Response.json(
-            { error: "Add a valid PDF or DOCX resume under 20 MB." },
+            { error: "Please provide all required referral details and a valid resume file." },
+            { status: 400 }
+          );
+        }
+
+        // File validation (size, extension, magic bytes)
+        const fileCheck = await validateFileContent(file);
+        if (!fileCheck.valid) {
+          return Response.json(
+            { error: fileCheck.error || "Invalid file." },
             { status: 400 }
           );
         }
@@ -399,7 +477,7 @@ export const Route = createFileRoute("/api/public/referrals")({
         }
 
         // 2. Duplicate detection:
-        // Match ONLY on normalized email OR normalized phone. Do NOT use name.
+        // Match strictly on normalized email OR normalized phone. Candidate name is NOT used.
         const { data: duplicateMatches } = await supabaseAdmin
           .from("candidates")
           .select("id, email_normalized, phone_normalized")
@@ -464,12 +542,23 @@ export const Route = createFileRoute("/api/public/referrals")({
           console.warn("Referrer DB operation warning:", refErr);
         }
 
-        // 4. File storage in Supabase Storage
-        const filePath = `${job.data.id}/${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "-")}`;
+        // 4. File storage in Supabase Storage with path traversal sanitization
+        const sanitizedFileName = file.name
+          .replace(/\.\.+/g, "")
+          .replace(/[/\\?%*:|"<>]/g, "")
+          .replace(/[^a-zA-Z0-9._-]/g, "-")
+          .slice(0, 100);
+
+        const filePath = `${job.data.id}/${crypto.randomUUID()}-${sanitizedFileName || "resume"}`;
+        let uploadSucceeded = false;
+
         try {
-          await supabaseAdmin.storage
+          const uploadRes = await supabaseAdmin.storage
             .from("resumes")
             .upload(filePath, file, { contentType: file.type || "application/octet-stream", upsert: false });
+          if (!uploadRes.error) {
+            uploadSucceeded = true;
+          }
         } catch (uploadErr) {
           console.warn("Resume upload note:", uploadErr);
         }
@@ -509,10 +598,13 @@ export const Route = createFileRoute("/api/public/referrals")({
 
           if (candidateInsert.data) {
             candidateInsertedInDb = true;
+          } else if (uploadSucceeded) {
+            // Rollback uploaded storage file on candidate insert failure
+            await supabaseAdmin.storage.from("resumes").remove([filePath]);
           }
         }
 
-        // If local dev environment prevented DB write due to service role restrictions, store in local fallback
+        // If local dev environment prevented DB write, store in local fallback
         if (!candidateInsertedInDb) {
           devReferralsStore.push({
             id: crypto.randomUUID(),

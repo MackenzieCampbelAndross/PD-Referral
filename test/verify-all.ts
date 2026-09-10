@@ -2,10 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-// Test runner for PurpleDrive Referal
+// Test runner for Purple Drive Referral
 async function runTests() {
   console.log("=========================================");
-  console.log("   PurpleDrive Referal - Test Suite     ");
+  console.log("   Purple Drive Referral - Test Suite    ");
   console.log("=========================================\n");
 
   let passed = 0;
@@ -162,17 +162,19 @@ async function runTests() {
     assert(homeRes.status === 200, "Home page returns HTTP 200");
     const html = await homeRes.text();
 
-    assert(html.includes("PurpleDrive Referal"), "Home page includes 'PurpleDrive Referal' branding");
+    assert(html.includes("Purple Drive Referral"), "Home page includes 'Purple Drive Referral' branding");
     assert(html.includes("/Purple%20drive%20logo.png") || html.includes("Purple drive logo.png"), "Home page includes Purple drive logo");
     assert(html.includes("/favicon.ico"), "Home page links to favicon.ico");
     assert(!html.toLowerCase().includes("referflow"), "Home page contains zero 'referflow' references");
+    assert(!html.includes("PurpleDrive Referal"), "Home page contains zero misspelled 'PurpleDrive Referal'");
 
     // Test Referral Slug Page
     const slugRes = await fetch("http://localhost:8080/j/dev-wqx7g");
     assert(slugRes.status === 200, "Job referral page returns HTTP 200");
     const slugHtml = await slugRes.text();
-    assert(slugHtml.includes("PurpleDrive Referal"), "Job page includes 'PurpleDrive Referal' branding");
+    assert(slugHtml.includes("Purple Drive Referral"), "Job page includes 'Purple Drive Referral' branding");
     assert(slugHtml.includes("/Purple%20drive%20logo.png") || slugHtml.includes("Purple drive logo.png"), "Job page includes Purple drive logo");
+    assert(!slugHtml.includes("PurpleDrive Referal"), "Job page contains zero misspelled 'PurpleDrive Referal'");
 
     // Test Track Referral API endpoint
     console.log("\n--- 6. Testing Track Referral API ---");
