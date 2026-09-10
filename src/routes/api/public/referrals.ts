@@ -22,7 +22,7 @@ async function extractResumeText(file: File) {
     }
     if (file.name.toLowerCase().endsWith(".pdf")) {
       const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-      const pdf = await pdfjs.getDocument({ data: bytes, disableFontFace: true, useWorkerFetch: false, isEvalSupported: false }).promise;
+      const pdf = await pdfjs.getDocument({ data: bytes, disableFontFace: true, useWorkerFetch: false }).promise;
       const pages: string[] = [];
       for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
         const page = await pdf.getPage(pageNumber);
@@ -55,8 +55,6 @@ export const Route = createFileRoute("/api/public/referrals")({
         const phone = normalizePhone(url.searchParams.get("phone") ?? "");
         if (!email || phone.length < 5) return Response.json({ error: "Enter the email and phone used on the referral." }, { status: 400 });
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-        const { data, error } = await supabaseAdmin.from("candidates").select("name, status, submitted_at, job_id, jobs(title)").eq("referrer_id", "00000000-0000-0000-0000-000000000000");
-        if (error) return Response.json({ error: "Could not look up referrals." }, { status: 500 });
         const referrer = await supabaseAdmin.from("referrers").select("id").eq("email", email).eq("phone", phone).maybeSingle();
         if (referrer.error || !referrer.data) return Response.json({ referrals: [] });
         const rows = await supabaseAdmin.from("candidates").select("name, status, submitted_at, job_id, jobs(title)").eq("referrer_id", referrer.data.id).order("submitted_at", { ascending: false });

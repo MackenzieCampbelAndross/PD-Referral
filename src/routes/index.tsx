@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { ArrowRight, BriefcaseBusiness, Check, Clipboard, Copy, FileText, Link2, LogOut, Plus, Search, Sparkles, Users, X } from "lucide-react";
+import { ArrowRight, BriefcaseBusiness, Check, Copy, FileText, Link2, LogOut, Plus, Search, Sparkles, Users, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -39,7 +39,7 @@ export const Route = createFileRoute("/")({
 });
 
 function Index() {
-  const [user, setUser] = useState<{ id: string; email?: string } | null>(null);
+  const [user, setUser] = useState<{ id: string; email: string } | null>(null);
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
   const [showAuth, setShowAuth] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
@@ -65,13 +65,13 @@ function Index() {
     let mounted = true;
     void supabase.auth.getUser().then(({ data }) => {
       if (mounted && data.user) {
-        setUser({ id: data.user.id, email: data.user.email });
+        setUser({ id: data.user.id, email: data.user.email ?? "" });
         void refreshWorkspace(data.user.id);
       }
     });
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       const nextUser = session?.user;
-      setUser(nextUser ? { id: nextUser.id, email: nextUser.email } : null);
+      setUser(nextUser ? { id: nextUser.id, email: nextUser.email ?? "" } : null);
       if (nextUser) void refreshWorkspace(nextUser.id);
       else {
         setJobs([]);
