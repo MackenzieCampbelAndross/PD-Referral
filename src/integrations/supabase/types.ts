@@ -28,6 +28,7 @@ export type Database = {
           referrer_id: string
           resume_file_path: string
           resume_raw_text: string
+          skills: Json | null
           status: Database["public"]["Enums"]["candidate_status"]
           status_updated_at: string
           submitted_at: string
@@ -46,6 +47,7 @@ export type Database = {
           referrer_id: string
           resume_file_path?: string
           resume_raw_text?: string
+          skills?: Json | null
           status?: Database["public"]["Enums"]["candidate_status"]
           status_updated_at?: string
           submitted_at?: string
@@ -64,6 +66,7 @@ export type Database = {
           referrer_id?: string
           resume_file_path?: string
           resume_raw_text?: string
+          skills?: Json | null
           status?: Database["public"]["Enums"]["candidate_status"]
           status_updated_at?: string
           submitted_at?: string
@@ -281,10 +284,9 @@ export type Database = {
     Enums: {
       candidate_status:
         | "submitted"
-        | "in_review"
-        | "interview"
-        | "offer"
-        | "hired"
+        | "shortlisted"
+        | "not_shortlisted"
+        | "selected"
         | "rejected"
       job_status: "open" | "closed" | "on_hold"
     }
@@ -416,10 +418,9 @@ export const Constants = {
     Enums: {
       candidate_status: [
         "submitted",
-        "in_review",
-        "interview",
-        "offer",
-        "hired",
+        "shortlisted",
+        "not_shortlisted",
+        "selected",
         "rejected",
       ],
       job_status: ["open", "closed", "on_hold"],

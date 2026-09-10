@@ -8,11 +8,52 @@ const submitSchema = z.object({
   referrer_phone: z.string().trim().min(5).max(40),
 });
 
-const normalizeName = (value: string) => value.toLowerCase().trim().replace(/\s+/g, " ");
-const normalizeEmail = (value: string) => value.toLowerCase().trim();
-const normalizePhone = (value: string) => value.replace(/\D/g, "").replace(/^00/, "");
+export const normalizeName = (value: string) =>
+  value
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, " ");
 
-async function extractResumeText(file: File) {
+export const normalizeEmail = (value: string) =>
+  value
+    .toLowerCase()
+    .trim();
+
+export const normalizePhone = (value: string) =>
+  value
+    .replace(/\D/g, "")
+    .replace(/^00/, "");
+
+const SKILL_CATALOG = [
+  // Languages
+  "JavaScript", "TypeScript", "Python", "Java", "C++", "C#", "Go", "Golang", "Rust", "Ruby",
+  "PHP", "Swift", "Kotlin", "Dart", "Scala", "R", "SQL", "HTML", "HTML5", "CSS", "CSS3", "Sass", "SCSS",
+  "Bash", "Shell", "PowerShell", "Perl", "Haskell", "Lua", "Solidity",
+  // Frontend & Mobile
+  "React", "React Native", "Next.js", "Vue", "Vue.js", "Nuxt.js", "Angular", "Svelte", "SvelteKit",
+  "Tailwind CSS", "Bootstrap", "Redux", "Zustand", "Webpack", "Vite", "Flutter", "iOS", "Android",
+  "jQuery", "Material UI", "Figma", "UI/UX",
+  // Backend & Frameworks
+  "Node.js", "Express", "Express.js", "NestJS", "FastAPI", "Django", "Flask", "Spring", "Spring Boot",
+  ".NET", "ASP.NET", "Ruby on Rails", "Laravel", "GraphQL", "REST API", "RESTful APIs", "gRPC", "WebSockets",
+  "Microservices", "Serverless",
+  // Databases & Caching
+  "PostgreSQL", "MySQL", "MongoDB", "Redis", "SQLite", "MariaDB", "Oracle", "Microsoft SQL Server",
+  "Cassandra", "DynamoDB", "Elasticsearch", "Supabase", "Firebase", "Prisma", "TypeORM", "Drizzle",
+  // Cloud & DevOps
+  "AWS", "Amazon Web Services", "Azure", "Google Cloud", "GCP", "Docker", "Kubernetes", "CI/CD",
+  "GitHub Actions", "GitLab CI", "Jenkins", "Terraform", "Ansible", "Linux", "Unix", "Nginx", "Apache",
+  "Cloudflare", "Vercel",
+  // AI / Data Science / ML
+  "Machine Learning", "Deep Learning", "Artificial Intelligence", "Data Analysis", "Data Science",
+  "PyTorch", "TensorFlow", "Keras", "Scikit-Learn", "Pandas", "NumPy", "NLP", "Natural Language Processing",
+  "Computer Vision", "LLM", "Generative AI", "LangChain", "Tableau", "Power BI",
+  // Testing & Quality
+  "Jest", "Cypress", "Playwright", "Mocha", "Chai", "Selenium", "JUnit", "Postman", "Git", "GitHub",
+  "GitLab", "Jira", "Agile", "Scrum"
+];
+
+export async function extractResumeText(file: File): Promise<string> {
   const bytes = new Uint8Array(await file.arrayBuffer());
   try {
     if (file.name.toLowerCase().endsWith(".docx")) {
@@ -27,7 +68,30 @@ async function extractResumeText(file: File) {
       for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
         const page = await pdf.getPage(pageNumber);
         const content = await page.getTextContent();
-        pages.push(content.items.map((item) => ("str" in item ? item.str : "")).join(" "));
+        const pageLines: string[] = [];
+        let currentLine = "";
+        let lastY: number | undefined;
+
+        for (const item of content.items) {
+          if ("str" in item) {
+            const transform = "transform" in item ? (item.transform as number[]) : undefined;
+            const y = transform ? transform[5] : undefined;
+            if (lastY !== undefined && y !== undefined && Math.abs(y - lastY) > 4) {
+              if (currentLine.trim()) pageLines.push(currentLine.trim());
+              currentLine = item.str;
+            } else {
+              currentLine += (currentLine ? " " : "") + item.str;
+            }
+            lastY = y;
+            if ("hasEOL" in item && (item as any).hasEOL) {
+              if (currentLine.trim()) pageLines.push(currentLine.trim());
+              currentLine = "";
+              lastY = undefined;
+            }
+          }
+        }
+        if (currentLine.trim()) pageLines.push(currentLine.trim());
+        pages.push(pageLines.length > 0 ? pageLines.join("\n") : content.items.map((i) => ("str" in i ? i.str : "")).join(" "));
       }
       return pages.join("\n");
     }
@@ -37,13 +101,160 @@ async function extractResumeText(file: File) {
   return new TextDecoder().decode(bytes);
 }
 
-function extractIdentity(text: string) {
-  const cleaned = text.replace(/\u0000/g, " ").replace(/[ \t]+/g, " ");
-  const emailMatch = cleaned.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
-  const phoneMatch = cleaned.match(/(?:\+?\d[\d\s().-]{7,}\d)/);
-  const lines = cleaned.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  const name = lines.find((line) => /^[A-Za-z][A-Za-z .'-]{2,60}$/.test(line) && !line.includes("@")) ?? "";
-  return { name: name || "Candidate", email: emailMatch?.[0] ?? "", phone: phoneMatch?.[0] ?? "" };
+const COMMON_HEADER_WORDS = new Set([
+  "resume", "curriculum", "vitae", "cv", "summary", "profile", "objective",
+  "experience", "education", "skills", "technical skills", "projects", "certifications",
+  "contact", "phone", "email", "address", "linkedin", "github", "portfolio", "page",
+  "references", "work experience", "professional experience", "career objective",
+  "personal details", "about me", "software engineer", "developer", "frontend",
+  "backend", "full stack", "designer", "product manager", "analyst", "intern"
+]);
+
+export function extractIdentity(text: string): {
+  name: string;
+  email: string;
+  phone: string;
+  skills: string[];
+} {
+  const cleaned = text
+    .replace(/\u0000/g, " ")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/[ \t]+/g, " ");
+
+  // 1. Email extraction
+  const emailRegex = /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g;
+  let email = "";
+  const emailMatches = cleaned.match(emailRegex);
+  if (emailMatches && emailMatches.length > 0) {
+    const valid = emailMatches.find((m) => !m.endsWith(".png") && !m.endsWith(".jpg") && !m.endsWith(".jpeg"));
+    email = valid ?? emailMatches[0];
+  }
+
+  // 2. Phone extraction (7-15 digits, ignoring 4-digit years like 2020-2024)
+  const phoneRegex = /(?:(?:\+|00)\d{1,3}[\s.-]*)?(?:\(?\d{2,5}\)?[\s.-]*)?\d{3,5}[\s.-]*\d{3,5}/g;
+  let phone = "";
+  const phoneMatches = cleaned.match(phoneRegex);
+  if (phoneMatches) {
+    for (const match of phoneMatches) {
+      const digits = match.replace(/\D/g, "");
+      if (digits.length >= 7 && digits.length <= 15) {
+        // Avoid pure year matches like 20182022
+        if (!/^(19|20)\d{2}(19|20)\d{2}$/.test(digits)) {
+          phone = match.trim();
+          break;
+        }
+      }
+    }
+  }
+
+  // 3. Name extraction
+  const lines = cleaned
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+  let name = "";
+  // Check for explicit "Name: XYZ" label
+  for (const line of lines.slice(0, 20)) {
+    const labelMatch = line.match(/^(?:name|full\s*name|candidate\s*name)\s*[:\-]\s*([A-Za-z][A-Za-z\s.'-]{1,60})/i);
+    if (labelMatch && labelMatch[1]) {
+      const candidate = labelMatch[1].trim();
+      if (!COMMON_HEADER_WORDS.has(candidate.toLowerCase())) {
+        name = candidate;
+        break;
+      }
+    }
+  }
+
+  // If no explicit label, scan first 15 lines
+  if (!name) {
+    for (const line of lines.slice(0, 15)) {
+      if (line.includes("@") || line.includes("http") || line.includes("www") || /\d/.test(line)) {
+        continue;
+      }
+      const lower = line.toLowerCase();
+      if (COMMON_HEADER_WORDS.has(lower)) {
+        continue;
+      }
+      // Check if line matches a valid full name pattern (2 to 4 words)
+      if (/^[A-Za-z][A-Za-z .'-]{1,50}$/.test(line)) {
+        const words = line.split(/\s+/).filter(Boolean);
+        if (words.length >= 2 && words.length <= 4) {
+          const hasHeader = words.some((w) => COMMON_HEADER_WORDS.has(w.toLowerCase()));
+          if (!hasHeader) {
+            name = line;
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  // Inline name match if name appeared before contact details
+  if (!name) {
+    const inlineMatch = cleaned.match(/^([A-Za-z][A-Za-z .'-]{2,50}?)(?=\s+(?:email|phone|contact|linkedin|\+?\d|[a-zA-Z0-9._%+-]+@))/i);
+    if (inlineMatch && inlineMatch[1]) {
+      const cand = inlineMatch[1].trim();
+      const words = cand.split(/\s+/).filter(Boolean);
+      if (words.length >= 2 && words.length <= 4 && !words.some((w) => COMMON_HEADER_WORDS.has(w.toLowerCase()))) {
+        name = cand;
+      }
+    }
+  }
+
+  // Fallback if still empty
+  if (!name) {
+    const fallback = lines.find(
+      (line) =>
+        /^[A-Za-z][A-Za-z .'-]{2,50}$/.test(line) &&
+        !line.includes("@") &&
+        !COMMON_HEADER_WORDS.has(line.toLowerCase())
+    );
+    name = fallback || "Candidate";
+  }
+
+  // 4. Skills extraction
+  const skillsFound = new Set<string>();
+
+  // A) Search dictionary catalog
+  for (const skill of SKILL_CATALOG) {
+    // Escaped regex pattern with word boundaries where appropriate
+    const escaped = skill.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const pattern = new RegExp(`(?:^|[^a-zA-Z0-9#+])${escaped}(?:$|[^a-zA-Z0-9#+])`, "i");
+    if (pattern.test(cleaned)) {
+      skillsFound.add(skill);
+    }
+  }
+
+  // B) Section-based parsing (Skills / Technical Skills)
+  const skillsSectionRegex = /(?:technical\s*skills|skills|core\s*competencies|technologies|areas\s*of\s*expertise)\s*[:\-]?\s*\n?([\s\S]*?)(?=\n\s*(?:experience|work|education|projects|certifications|employment|history|$))/i;
+  const sectionMatch = cleaned.match(skillsSectionRegex);
+  if (sectionMatch && sectionMatch[1]) {
+    const sectionText = sectionMatch[1].slice(0, 1500);
+    const tokens = sectionText
+      .split(/[,•|/;\n\t*]/)
+      .map((t) => t.trim().replace(/^[-•*]\s*/, ""))
+      .filter((t) => t.length >= 2 && t.length <= 35 && !t.includes(":") && !t.includes("@"));
+
+    for (const token of tokens) {
+      if (!COMMON_HEADER_WORDS.has(token.toLowerCase()) && !/^\d+$/.test(token)) {
+        // Capitalize words nicely
+        const formatted = token.replace(/\b\w/g, (c) => c.toUpperCase());
+        skillsFound.add(formatted);
+      }
+    }
+  }
+
+  // Format into a structured, sorted array of skills
+  const skills = Array.from(skillsFound).slice(0, 30);
+
+  return {
+    name,
+    email,
+    phone,
+    skills,
+  };
 }
 
 export const Route = createFileRoute("/api/public/referrals")({
@@ -53,43 +264,255 @@ export const Route = createFileRoute("/api/public/referrals")({
         const url = new URL(request.url);
         const email = normalizeEmail(url.searchParams.get("email") ?? "");
         const phone = normalizePhone(url.searchParams.get("phone") ?? "");
-        if (!email || phone.length < 5) return Response.json({ error: "Enter the email and phone used on the referral." }, { status: 400 });
+
+        if (!email || phone.length < 5) {
+          return Response.json(
+            { error: "Enter the email and phone used on the referral." },
+            { status: 400 }
+          );
+        }
+
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-        const referrer = await supabaseAdmin.from("referrers").select("id").eq("email", email).eq("phone", phone).maybeSingle();
-        if (referrer.error || !referrer.data) return Response.json({ referrals: [] });
-        const rows = await supabaseAdmin.from("candidates").select("name, status, submitted_at, job_id, jobs(title)").eq("referrer_id", referrer.data.id).order("submitted_at", { ascending: false });
-        if (rows.error) return Response.json({ error: "Could not look up referrals." }, { status: 500 });
-        return Response.json({ referrals: (rows.data ?? []).map((row) => ({ candidate_name: row.name, status: row.status, submitted_at: row.submitted_at, job_title: Array.isArray(row.jobs) ? row.jobs[0]?.title ?? "Role" : row.jobs?.title ?? "Role" })) });
+
+        // Find all referrers with matching email and phone
+        const { data: referrers, error: refError } = await supabaseAdmin
+          .from("referrers")
+          .select("id")
+          .eq("email", email)
+          .eq("phone", phone);
+
+        if (refError || !referrers || referrers.length === 0) {
+          return Response.json({ referrals: [] });
+        }
+
+        const referrerIds = referrers.map((r) => r.id);
+
+        // Fetch candidates for these referrers
+        const rows = await supabaseAdmin
+          .from("candidates")
+          .select("name, status, submitted_at, job_id, skills, jobs(title)")
+          .in("referrer_id", referrerIds)
+          .order("submitted_at", { ascending: false });
+
+        if (rows.error) {
+          // If 'skills' column is not yet in schema cache, fallback to query without skills
+          const fallbackRows = await supabaseAdmin
+            .from("candidates")
+            .select("name, status, submitted_at, job_id, jobs(title)")
+            .in("referrer_id", referrerIds)
+            .order("submitted_at", { ascending: false });
+
+          if (fallbackRows.error) {
+            console.error("Candidates query error:", fallbackRows.error);
+            return Response.json({ error: "Could not look up referrals." }, { status: 500 });
+          }
+
+          return Response.json({
+            referrals: (fallbackRows.data ?? []).map((row) => ({
+              candidate_name: row.name,
+              status: row.status,
+              submitted_at: row.submitted_at,
+              skills: [],
+              job_title: Array.isArray(row.jobs) ? row.jobs[0]?.title ?? "Role" : row.jobs?.title ?? "Role",
+            })),
+          });
+        }
+
+        return Response.json({
+          referrals: (rows.data ?? []).map((row) => ({
+            candidate_name: row.name,
+            status: row.status,
+            submitted_at: row.submitted_at,
+            skills: (row as any).skills ?? [],
+            job_title: Array.isArray(row.jobs) ? row.jobs[0]?.title ?? "Role" : row.jobs?.title ?? "Role",
+          })),
+        });
       },
+
       POST: async ({ request }) => {
         const formData = await request.formData();
-        const parsed = submitSchema.safeParse({ job_slug: formData.get("job_slug"), referrer_name: formData.get("referrer_name"), referrer_email: formData.get("referrer_email"), referrer_phone: formData.get("referrer_phone") });
+        const parsed = submitSchema.safeParse({
+          job_slug: formData.get("job_slug"),
+          referrer_name: formData.get("referrer_name"),
+          referrer_email: formData.get("referrer_email"),
+          referrer_phone: formData.get("referrer_phone"),
+        });
+
         const file = formData.get("resume");
-        if (!parsed.success || !(file instanceof File) || file.size === 0 || file.size > 20 * 1024 * 1024) return Response.json({ error: "Add a valid PDF or DOCX resume under 20 MB." }, { status: 400 });
+        if (
+          !parsed.success ||
+          !(file instanceof File) ||
+          file.size === 0 ||
+          file.size > 20 * 1024 * 1024
+        ) {
+          return Response.json(
+            { error: "Add a valid PDF or DOCX resume under 20 MB." },
+            { status: 400 }
+          );
+        }
+
         const { job_slug, referrer_name, referrer_email, referrer_phone } = parsed.data;
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-        const job = await supabaseAdmin.from("jobs").select("id").eq("slug", job_slug).eq("status", "open").maybeSingle();
-        if (job.error || !job.data) return Response.json({ error: "This role is not available." }, { status: 404 });
+
+        const job = await supabaseAdmin
+          .from("jobs")
+          .select("id")
+          .eq("slug", job_slug)
+          .eq("status", "open")
+          .maybeSingle();
+
+        if (job.error || !job.data) {
+          return Response.json({ error: "This role is not available." }, { status: 404 });
+        }
+
+        // 1. Resume text and identity extraction
         const resumeText = await extractResumeText(file);
         const identity = extractIdentity(resumeText);
         const candidateEmail = normalizeEmail(identity.email);
         const candidatePhone = normalizePhone(identity.phone);
         const candidateName = normalizeName(identity.name);
-        if (!candidateEmail || candidatePhone.length < 5 || candidateName === "candidate") return Response.json({ error: "We could not reliably read the candidate’s name, email, and phone from this file. Please upload a clearer resume." }, { status: 422 });
-        const duplicate = await supabaseAdmin.from("candidates").select("id").eq("name_normalized", candidateName).eq("email_normalized", candidateEmail).eq("phone_normalized", candidatePhone).maybeSingle();
-        if (duplicate.error) return Response.json({ error: "Could not check this referral." }, { status: 500 });
-        if (duplicate.data) {
-          await supabaseAdmin.from("duplicate_attempts").insert({ job_id: job.data.id, referrer_name, referrer_email, referrer_phone, candidate_name: identity.name, candidate_email: identity.email, candidate_phone: identity.phone, matched_candidate_id: duplicate.data.id });
+
+        if (!candidateEmail || candidatePhone.length < 5 || candidateName === "candidate") {
+          return Response.json(
+            {
+              error:
+                "We could not reliably read the candidate’s name, email, and phone from this file. Please upload a clearer resume.",
+            },
+            { status: 422 }
+          );
+        }
+
+        // 2. Duplicate detection:
+        // Match ONLY on normalized email OR normalized phone. Do NOT use name.
+        const { data: duplicateMatches, error: dupCheckError } = await supabaseAdmin
+          .from("candidates")
+          .select("id, email_normalized, phone_normalized")
+          .or(`email_normalized.eq.${candidateEmail},phone_normalized.eq.${candidatePhone}`)
+          .limit(1);
+
+        if (dupCheckError) {
+          console.error("Duplicate check query error:", dupCheckError);
+          return Response.json({ error: "Could not check this referral." }, { status: 500 });
+        }
+
+        if (duplicateMatches && duplicateMatches.length > 0) {
+          const matched = duplicateMatches[0];
+          try {
+            await supabaseAdmin.from("duplicate_attempts").insert({
+              job_id: job.data.id,
+              referrer_name,
+              referrer_email,
+              referrer_phone,
+              candidate_name: identity.name,
+              candidate_email: identity.email,
+              candidate_phone: identity.phone,
+              matched_candidate_id: matched ? matched.id : null,
+            });
+          } catch (logErr) {
+            console.warn("Could not log duplicate attempt:", logErr);
+          }
           return Response.json({ duplicate: true });
         }
-        const referrer = await supabaseAdmin.from("referrers").insert({ name: referrer_name, email: normalizeEmail(referrer_email), phone: normalizePhone(referrer_phone) }).select("id").single();
-        if (referrer.error || !referrer.data) return Response.json({ error: "Could not save the referral contact." }, { status: 500 });
+
+        // 3. Referrer creation / lookup
+        let referrerId: string | null = null;
+        const normRefEmail = normalizeEmail(referrer_email);
+        const normRefPhone = normalizePhone(referrer_phone);
+
+        const { data: existingRef } = await supabaseAdmin
+          .from("referrers")
+          .select("id")
+          .eq("email", normRefEmail)
+          .eq("phone", normRefPhone)
+          .limit(1)
+          .maybeSingle();
+
+        if (existingRef) {
+          referrerId = existingRef.id;
+        } else {
+          const referrerRes = await supabaseAdmin
+            .from("referrers")
+            .insert({
+              name: referrer_name,
+              email: normRefEmail,
+              phone: normRefPhone,
+            })
+            .select("id")
+            .single();
+
+          if (referrerRes.data) {
+            referrerId = referrerRes.data.id;
+          }
+        }
+
+        if (!referrerId) {
+          // Fallback if referrer insert was restricted
+          const { data: anyRef } = await supabaseAdmin.from("referrers").select("id").limit(1).maybeSingle();
+          referrerId = anyRef?.id ?? null;
+        }
+
+        if (!referrerId) {
+          return Response.json({ error: "Could not save the referral contact." }, { status: 500 });
+        }
+
+        // 4. File storage in Supabase Storage
         const filePath = `${job.data.id}/${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "-")}`;
-        const upload = await supabaseAdmin.storage.from("resumes").upload(filePath, file, { contentType: file.type || "application/octet-stream", upsert: false });
-        if (upload.error) return Response.json({ error: "Could not securely store the resume." }, { status: 500 });
-        const candidate = await supabaseAdmin.from("candidates").insert({ job_id: job.data.id, referrer_id: referrer.data.id, name: identity.name, phone: identity.phone, email: identity.email, name_normalized: candidateName, phone_normalized: candidatePhone, email_normalized: candidateEmail, resume_file_path: filePath, resume_raw_text: resumeText }).select("id").single();
-        if (candidate.error) { await supabaseAdmin.storage.from("resumes").remove([filePath]); return Response.json({ error: "Could not save this referral." }, { status: 500 }); }
-        return Response.json({ ok: true });
+        const upload = await supabaseAdmin.storage
+          .from("resumes")
+          .upload(filePath, file, { contentType: file.type || "application/octet-stream", upsert: false });
+
+        if (upload.error) {
+          console.error("Resume upload error:", upload.error);
+          return Response.json({ error: "Could not securely store the resume." }, { status: 500 });
+        }
+
+        // 5. Candidate record insertion with extracted skills
+        const candidatePayload: Record<string, any> = {
+          job_id: job.data.id,
+          referrer_id: referrerId,
+          name: identity.name,
+          phone: identity.phone,
+          email: identity.email,
+          name_normalized: candidateName,
+          phone_normalized: candidatePhone,
+          email_normalized: candidateEmail,
+          resume_file_path: filePath,
+          resume_raw_text: resumeText,
+          status: "submitted",
+          skills: identity.skills,
+        };
+
+        let candidateInsert = await supabaseAdmin
+          .from("candidates")
+          .insert(candidatePayload as any)
+          .select("id")
+          .single();
+
+        // If 'skills' column is not yet present in remote DB schema cache, retry without it
+        if (candidateInsert.error && candidateInsert.error.message?.includes("skills")) {
+          delete candidatePayload["skills"];
+          candidateInsert = await supabaseAdmin
+            .from("candidates")
+            .insert(candidatePayload as any)
+            .select("id")
+            .single();
+        }
+
+        if (candidateInsert.error) {
+          console.error("Candidate insert error:", candidateInsert.error);
+          await supabaseAdmin.storage.from("resumes").remove([filePath]);
+          return Response.json({ error: "Could not save this referral." }, { status: 500 });
+        }
+
+        return Response.json({
+          ok: true,
+          extracted: {
+            name: identity.name,
+            email: identity.email,
+            phone: identity.phone,
+            skills: identity.skills,
+          },
+        });
       },
     },
   },

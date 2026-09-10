@@ -78,10 +78,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Referflow — Referral hiring, without the spreadsheet" },
+      { title: "PurpleDrive Referal — Turn introductions into hires" },
       { name: "description", content: "A private referral workspace for sharing roles, collecting resumes, and moving great candidates forward." },
-      { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Referflow — Referral hiring, without the spreadsheet" },
+      { name: "author", content: "PurpleDrive" },
+      { property: "og:title", content: "PurpleDrive Referal — Turn introductions into hires" },
       { property: "og:description", content: "A private referral workspace for sharing roles, collecting resumes, and moving great candidates forward." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
