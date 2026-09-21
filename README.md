@@ -80,8 +80,6 @@ Document·MD 
 
 Write a message…
 
-
-
 Claude is AI and can make mistakes.
 
 Purple drive referral system spec · MD
@@ -243,7 +241,7 @@ On duplicate: log the attempt (who tried to refer whom, when) even though nothin
 6. Status Workflow
 
 Submitted → In Review → Interview → Offer → Hired
-                  ↘ Rejected (can happen from any stage)
+↘ Rejected (can happen from any stage)
 
 Recruiters can move a candidate to any status manually; no forced linear flow is required in v1.
 

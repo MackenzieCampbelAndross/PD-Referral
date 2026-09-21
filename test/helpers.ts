@@ -5,7 +5,7 @@ export async function createRealDocxFile(
   email: string,
   phone: string,
   skills: string[],
-  filename: string = "resume.docx"
+  filename: string = "resume.docx",
 ): Promise<File> {
   const zip = new JSZip();
 
@@ -15,30 +15,30 @@ export async function createRealDocxFile(
     '  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>',
     '  <Default Extension="xml" ContentType="application/xml"/>',
     '  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>',
-    '</Types>'
+    "</Types>",
   ].join("\n");
 
   const relsXml = [
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
     '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">',
     '  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>',
-    '</Relationships>'
+    "</Relationships>",
   ].join("\n");
 
   const documentXml = [
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
     '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">',
-    '  <w:body>',
+    "  <w:body>",
     `    <w:p><w:r><w:t>${name}</w:t></w:r></w:p>`,
-    '    <w:p><w:r><w:t>Senior Full Stack Developer</w:t></w:r></w:p>',
+    "    <w:p><w:r><w:t>Senior Full Stack Developer</w:t></w:r></w:p>",
     `    <w:p><w:r><w:t>Email: ${email}</w:t></w:r></w:p>`,
     `    <w:p><w:r><w:t>Phone: ${phone}</w:t></w:r></w:p>`,
-    '    <w:p><w:r><w:t>PROFESSIONAL SUMMARY</w:t></w:r></w:p>',
-    '    <w:p><w:r><w:t>Experienced engineer building distributed systems.</w:t></w:r></w:p>',
-    '    <w:p><w:r><w:t>TECHNICAL SKILLS</w:t></w:r></w:p>',
+    "    <w:p><w:r><w:t>PROFESSIONAL SUMMARY</w:t></w:r></w:p>",
+    "    <w:p><w:r><w:t>Experienced engineer building distributed systems.</w:t></w:r></w:p>",
+    "    <w:p><w:r><w:t>TECHNICAL SKILLS</w:t></w:r></w:p>",
     `    <w:p><w:r><w:t>${skills.join(", ")}</w:t></w:r></w:p>`,
-    '  </w:body>',
-    '</w:document>'
+    "  </w:body>",
+    "</w:document>",
   ].join("\n");
 
   zip.file("[Content_Types].xml", contentTypesXml);
@@ -46,7 +46,7 @@ export async function createRealDocxFile(
   zip.file("word/document.xml", documentXml);
 
   const buffer = await zip.generateAsync({ type: "uint8array" });
-  return new File([buffer], filename, {
+  return new File([Buffer.from(buffer)], filename, {
     type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   });
 }
@@ -57,15 +57,9 @@ export function createRealPdfFile(
   email: string,
   phone: string,
   skills: string[],
-  filename: string = "resume.pdf"
+  filename: string = "resume.pdf",
 ): File {
-  const lines = [
-    name,
-    `Email: ${email}`,
-    `Phone: ${phone}`,
-    "TECHNICAL SKILLS",
-    skills.join(", ")
-  ];
+  const lines = [name, `Email: ${email}`, `Phone: ${phone}`, "TECHNICAL SKILLS", skills.join(", ")];
 
   let stream = "BT /F1 12 Tf 50 700 Td ";
   for (const line of lines) {
@@ -91,7 +85,7 @@ export function createRealPdfFile(
     "0000000058 00000 n \n",
     "0000000115 00000 n \n",
     "0000000250 00000 n \n",
-    `trailer << /Size 6 /Root 1 0 R >>\nstartxref\n350\n%%EOF`
+    `trailer << /Size 6 /Root 1 0 R >>\nstartxref\n350\n%%EOF`,
   ];
 
   const fullPdfBuffer = Buffer.from(pdfParts.join(""), "utf-8");

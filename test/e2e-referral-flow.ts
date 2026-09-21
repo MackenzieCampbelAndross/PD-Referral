@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import { createRealDocxFile } from "./helpers.ts";
+import { createRealDocxFile } from "./helpers";
 
 async function runE2E() {
   console.log("=========================================");
@@ -11,7 +11,11 @@ async function runE2E() {
   const sb = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 
   // 1. Fetch an open job to refer for
-  const { data: jobs, error: jobErr } = await sb.from("jobs").select("id, slug, title").eq("status", "open").limit(1);
+  const { data: jobs, error: jobErr } = await sb
+    .from("jobs")
+    .select("id, slug, title")
+    .eq("status", "open")
+    .limit(1);
   if (jobErr || !jobs || jobs.length === 0) {
     console.error("No open jobs found in database:", jobErr);
     process.exit(1);
@@ -34,7 +38,7 @@ async function runE2E() {
     candidateEmail1,
     candidatePhone1,
     ["React", "TypeScript", "Node.js", "PostgreSQL", "Docker", "AWS"],
-    "marcus_vance_resume.docx"
+    "marcus_vance_resume.docx",
   );
 
   const fd1 = new FormData();
@@ -44,7 +48,10 @@ async function runE2E() {
   fd1.append("referrer_phone", referrerPhone);
   fd1.append("resume", resume1);
 
-  const res1 = await fetch("http://localhost:8080/api/public/referrals", { method: "POST", body: fd1 });
+  const res1 = await fetch("http://localhost:8080/api/public/referrals", {
+    method: "POST",
+    body: fd1,
+  });
   const data1 = await res1.json();
   console.log("Submission 1 response:", data1);
 
@@ -64,7 +71,7 @@ async function runE2E() {
     candidateEmail1, // SAME EMAIL
     differentPhone,
     ["Python", "Django"],
-    "other_resume.docx"
+    "other_resume.docx",
   );
 
   const fd2 = new FormData();
@@ -74,7 +81,10 @@ async function runE2E() {
   fd2.append("referrer_phone", "+1 555 111 2222");
   fd2.append("resume", resumeDuplicateEmail);
 
-  const res2 = await fetch("http://localhost:8080/api/public/referrals", { method: "POST", body: fd2 });
+  const res2 = await fetch("http://localhost:8080/api/public/referrals", {
+    method: "POST",
+    body: fd2,
+  });
   const data2 = await res2.json();
   console.log("Duplicate email response:", data2);
 
@@ -93,7 +103,7 @@ async function runE2E() {
     differentEmail,
     candidatePhone1, // SAME PHONE
     ["Go", "Kubernetes"],
-    "other_resume2.docx"
+    "other_resume2.docx",
   );
 
   const fd3 = new FormData();
@@ -103,7 +113,10 @@ async function runE2E() {
   fd3.append("referrer_phone", "+1 555 111 3333");
   fd3.append("resume", resumeDuplicatePhone);
 
-  const res3 = await fetch("http://localhost:8080/api/public/referrals", { method: "POST", body: fd3 });
+  const res3 = await fetch("http://localhost:8080/api/public/referrals", {
+    method: "POST",
+    body: fd3,
+  });
   const data3 = await res3.json();
   console.log("Duplicate phone response:", data3);
 
@@ -127,10 +140,14 @@ async function runE2E() {
   }
 
   const tracked = trackData.referrals[0];
-  console.log(`Found tracked candidate: "${tracked.candidate_name}" for role "${tracked.job_title}" with status "${tracked.status}"`);
+  console.log(
+    `Found tracked candidate: "${tracked.candidate_name}" for role "${tracked.job_title}" with status "${tracked.status}"`,
+  );
 
   if (tracked.candidate_name === candidateName1 && tracked.status === "submitted") {
-    console.log("✅ Track Referral verified candidate name, job title, and initial status (Submitted)!");
+    console.log(
+      "✅ Track Referral verified candidate name, job title, and initial status (Submitted)!",
+    );
   } else {
     console.error("❌ Track Referral data mismatch:", tracked);
     process.exit(1);
@@ -138,11 +155,18 @@ async function runE2E() {
 
   // Step 5: Test Status Updates & Synchronization
   console.log("\n--- Step 5: Testing Status Updates & Synchronization ---");
-  const { data: candRows } = await sb.from("candidates").select("id").eq("email_normalized", candidateEmail1.toLowerCase().trim()).limit(1);
+  const { data: candRows } = await sb
+    .from("candidates")
+    .select("id")
+    .eq("email_normalized", candidateEmail1.toLowerCase().trim())
+    .limit(1);
   if (candRows && candRows.length > 0) {
     const candidateId = candRows[0].id;
     console.log(`Updating candidate ${candidateId} to status 'shortlisted'...`);
-    const { error: updErr } = await sb.from("candidates").update({ status: "shortlisted" as any }).eq("id", candidateId);
+    const { error: updErr } = await sb
+      .from("candidates")
+      .update({ status: "shortlisted" as any })
+      .eq("id", candidateId);
     if (updErr) {
       console.warn("Candidate status update notice:", updErr.message);
     } else {

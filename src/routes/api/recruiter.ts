@@ -1,5 +1,3 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { z } from "zod";
 import type { Database } from "@/integrations/supabase/types";
 
 type CandidateStatus = Database["public"]["Enums"]["candidate_status"];
@@ -20,10 +18,9 @@ export function isAuthorizedEmail(email?: string | null): boolean {
 }
 
 // Helper to authenticate recruiter session server-side
-async function authenticateRecruiter(request: Request): Promise<
-  | { error: string; status: number }
-  | { user: any; supabaseAdmin: any }
-> {
+export async function authenticateRecruiter(
+  request: Request,
+): Promise<{ error: string; status: number } | { user: any; supabaseAdmin: any }> {
   const authHeader = request.headers.get("authorization") || "";
   if (!authHeader.startsWith("Bearer ")) {
     return { error: "Unauthorized: Missing or invalid authorization header.", status: 401 };
@@ -55,166 +52,166 @@ async function authenticateRecruiter(request: Request): Promise<
   return { user, supabaseAdmin };
 }
 
-export const Route = createFileRoute("/api/recruiter")({
-  server: {
-    handlers: {
-      // GET: Fetch workspace data (jobs & candidates owned by the authenticated recruiter)
-      GET: async ({ request }) => {
-        const auth = await authenticateRecruiter(request);
-        if ("error" in auth) {
-          return Response.json({ error: auth.error }, { status: auth.status });
-        }
+// GET: Fetch workspace data (jobs & candidates owned by the authenticated recruiter)
+export async function GET(request: Request) {
+  const auth = await authenticateRecruiter(request);
+  if ("error" in auth) {
+    return Response.json({ error: auth.error }, { status: auth.status });
+  }
 
-        const { user, supabaseAdmin } = auth;
+  const { user, supabaseAdmin } = auth;
 
-        // 1. Fetch only jobs owned by this recruiter (deriving ID from token, never client input)
-        const { data: jobs, error: jobError } = await supabaseAdmin
-          .from("jobs")
-          .select("id, recruiter_id, title, description, slug, status, created_at, updated_at")
-          .eq("recruiter_id", user.id)
-          .order("created_at", { ascending: false });
+  // 1. Fetch only jobs owned by this recruiter (deriving ID from token, never client input)
+  const { data: jobs, error: jobError } = await supabaseAdmin
+    .from("jobs")
+    .select("id, recruiter_id, title, description, slug, status, created_at, updated_at")
+    .eq("recruiter_id", user.id)
+    .order("created_at", { ascending: false });
 
-        if (jobError) {
-          return Response.json({ error: "Could not load jobs." }, { status: 500 });
-        }
+  if (jobError) {
+    return Response.json({ error: "Could not load jobs." }, { status: 500 });
+  }
 
-        const jobIds = (jobs || []).map((j: { id: string }) => j.id);
+  const jobIds = (jobs || []).map((j: { id: string }) => j.id);
 
-        if (jobIds.length === 0) {
-          return Response.json({ jobs: [], candidates: [] });
-        }
+  if (jobIds.length === 0) {
+    return Response.json({ jobs: [], candidates: [] });
+  }
 
-        // 2. Fetch candidates for these jobs with strict DATA MINIMIZATION (NO resume_raw_text)
-        const { data: candidates, error: candError } = await supabaseAdmin
-          .from("candidates")
-          .select("id, job_id, referrer_id, name, email, phone, status, submitted_at, skills")
-          .in("job_id", jobIds)
-          .order("submitted_at", { ascending: false });
+  // 2. Fetch candidates for these jobs with strict DATA MINIMIZATION (NO resume_raw_text)
+  const { data: candidates, error: candError } = await supabaseAdmin
+    .from("candidates")
+    .select("id, job_id, referrer_id, name, email, phone, status, submitted_at, skills")
+    .in("job_id", jobIds)
+    .order("submitted_at", { ascending: false });
 
-        if (candError) {
-          return Response.json({ error: "Could not load candidates." }, { status: 500 });
-        }
+  if (candError) {
+    return Response.json({ error: "Could not load candidates." }, { status: 500 });
+  }
 
-        return Response.json({
-          jobs: jobs || [],
-          candidates: candidates || [],
-        });
-      },
+  return Response.json({
+    jobs: jobs || [],
+    candidates: candidates || [],
+  });
+}
 
-      // POST: Mutate recruiter operations (create job, update candidate status)
-      POST: async ({ request }) => {
-        const auth = await authenticateRecruiter(request);
-        if ("error" in auth) {
-          return Response.json({ error: auth.error }, { status: auth.status });
-        }
+// POST: Mutate recruiter operations (create job, update candidate status)
+export async function POST(request: Request) {
+  const auth = await authenticateRecruiter(request);
+  if ("error" in auth) {
+    return Response.json({ error: auth.error }, { status: auth.status });
+  }
 
-        const { user, supabaseAdmin } = auth;
-        let payload: any;
-        try {
-          payload = await request.json();
-        } catch {
-          return Response.json({ error: "Invalid JSON body." }, { status: 400 });
-        }
+  const { user, supabaseAdmin } = auth;
+  let payload: any;
+  try {
+    payload = await request.json();
+  } catch {
+    return Response.json({ error: "Invalid JSON body." }, { status: 400 });
+  }
 
-        const action = payload.action;
+  const action = payload.action;
 
-        // Action 1: Create a Job
-        if (action === "create_job") {
-          const title = typeof payload.title === "string" ? payload.title.trim() : "";
-          const description = typeof payload.description === "string" ? payload.description.trim() : "";
+  // Action 1: Create a Job
+  if (action === "create_job") {
+    const title = typeof payload.title === "string" ? payload.title.trim() : "";
+    const description = typeof payload.description === "string" ? payload.description.trim() : "";
 
-          if (title.length < 2 || title.length > 120) {
-            return Response.json({ error: "Job title must be between 2 and 120 characters." }, { status: 400 });
-          }
+    if (title.length < 2 || title.length > 120) {
+      return Response.json(
+        { error: "Job title must be between 2 and 120 characters." },
+        { status: 400 },
+      );
+    }
 
-          const base = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
-          const slug = `${base || "role"}-${Math.random().toString(36).slice(2, 7)}`;
+    const base = title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "");
+    const slug = `${base || "role"}-${Math.random().toString(36).slice(2, 7)}`;
 
-          // Always assign recruiter_id from verified server session (anti-IDOR)
-          const { data: job, error: insertError } = await supabaseAdmin
-            .from("jobs")
-            .insert({
-              recruiter_id: user.id,
-              title,
-              description,
-              slug,
-              status: "open",
-            })
-            .select("id, recruiter_id, title, description, slug, status, created_at, updated_at")
-            .single();
+    // Always assign recruiter_id from verified server session (anti-IDOR)
+    const { data: job, error: insertError } = await supabaseAdmin
+      .from("jobs")
+      .insert({
+        recruiter_id: user.id,
+        title,
+        description,
+        slug,
+        status: "open",
+      })
+      .select("id, recruiter_id, title, description, slug, status, created_at, updated_at")
+      .single();
 
-          if (insertError || !job) {
-            return Response.json({ error: "Could not create job." }, { status: 500 });
-          }
+    if (insertError || !job) {
+      return Response.json({ error: "Could not create job." }, { status: 500 });
+    }
 
-          return Response.json({ ok: true, job });
-        }
+    return Response.json({ ok: true, job });
+  }
 
-        // Action 2: Update Candidate Status (Protected against IDOR)
-        if (action === "update_status") {
-          const candidateId = typeof payload.candidate_id === "string" ? payload.candidate_id : "";
-          const newStatus = payload.status as CandidateStatus;
+  // Action 2: Update Candidate Status (Protected against IDOR)
+  if (action === "update_status") {
+    const candidateId = typeof payload.candidate_id === "string" ? payload.candidate_id : "";
+    const newStatus = payload.status as CandidateStatus;
 
-          if (!candidateId) {
-            return Response.json({ error: "candidate_id is required." }, { status: 400 });
-          }
+    if (!candidateId) {
+      return Response.json({ error: "candidate_id is required." }, { status: 400 });
+    }
 
-          if (!ALLOWED_STATUSES.includes(newStatus)) {
-            return Response.json(
-              { error: `Invalid status. Must be one of: ${ALLOWED_STATUSES.join(", ")}` },
-              { status: 400 }
-            );
-          }
+    if (!ALLOWED_STATUSES.includes(newStatus)) {
+      return Response.json(
+        { error: `Invalid status. Must be one of: ${ALLOWED_STATUSES.join(", ")}` },
+        { status: 400 },
+      );
+    }
 
-          // Anti-IDOR Check: Verify candidate belongs to a job owned by this recruiter
-          const { data: candidate, error: candLookupErr } = await supabaseAdmin
-            .from("candidates")
-            .select("id, job_id, jobs(recruiter_id)")
-            .eq("id", candidateId)
-            .maybeSingle();
+    // Anti-IDOR Check: Verify candidate belongs to a job owned by this recruiter
+    const { data: candidate, error: candLookupErr } = await supabaseAdmin
+      .from("candidates")
+      .select("id, job_id, jobs(recruiter_id)")
+      .eq("id", candidateId)
+      .maybeSingle();
 
-          if (candLookupErr || !candidate) {
-            return Response.json({ error: "Candidate not found." }, { status: 404 });
-          }
+    if (candLookupErr || !candidate) {
+      return Response.json({ error: "Candidate not found." }, { status: 404 });
+    }
 
-          const jobRecruiterId = Array.isArray(candidate.jobs)
-            ? candidate.jobs[0]?.recruiter_id
-            : (candidate.jobs as any)?.recruiter_id;
+    const jobRecruiterId = Array.isArray(candidate.jobs)
+      ? candidate.jobs[0]?.recruiter_id
+      : (candidate.jobs as any)?.recruiter_id;
 
-          if (jobRecruiterId !== user.id) {
-            // Recruiter A cannot modify Recruiter B's candidates
-            return Response.json(
-              { error: "Forbidden: You do not own the role for this candidate." },
-              { status: 403 }
-            );
-          }
+    if (jobRecruiterId !== user.id) {
+      // Recruiter A cannot modify Recruiter B's candidates
+      return Response.json(
+        { error: "Forbidden: You do not own the role for this candidate." },
+        { status: 403 },
+      );
+    }
 
-          // Update candidate status
-          const { error: updateErr } = await supabaseAdmin
-            .from("candidates")
-            .update({ status: newStatus })
-            .eq("id", candidateId);
+    // Update candidate status
+    const { error: updateErr } = await supabaseAdmin
+      .from("candidates")
+      .update({ status: newStatus })
+      .eq("id", candidateId);
 
-          if (updateErr) {
-            return Response.json({ error: "Could not update candidate status." }, { status: 500 });
-          }
+    if (updateErr) {
+      return Response.json({ error: "Could not update candidate status." }, { status: 500 });
+    }
 
-          // Log status history safely with error check
-          const { error: histErr } = await supabaseAdmin.from("status_history").insert({
-            candidate_id: candidateId,
-            status: newStatus,
-            changed_by: user.id,
-          });
+    // Log status history safely with error check
+    const { error: histErr } = await supabaseAdmin.from("status_history").insert({
+      candidate_id: candidateId,
+      status: newStatus,
+      changed_by: user.id,
+    });
 
-          if (histErr) {
-            console.warn("Status history record failure:", histErr);
-          }
+    if (histErr) {
+      console.warn("Status history record failure:", histErr);
+    }
 
-          return Response.json({ ok: true, status: newStatus });
-        }
+    return Response.json({ ok: true, status: newStatus });
+  }
 
-        return Response.json({ error: "Unknown action." }, { status: 400 });
-      },
-    },
-  },
-});
+  return Response.json({ error: "Unknown action." }, { status: 400 });
+}
